@@ -1,4 +1,7 @@
 <form action="subir-archivo" method="POST" enctype="multipart/form-data">
+	<input type="text" id="nombre" name="nombre" required maxlength="80">
 	<input type="file" name="archivo" id="archivo">
+	<input type="checkbox" id="con-nombre-de-columnas" name="con-nombre-de-columnas" value="True" checked>
+	<label for="con-nombre-de-columnas"> La primera fila contiene los nombres de las columnas</label>
 	<button type="submit">Enviar</button>
 </form>
