@@ -1,12 +1,8 @@
-from flask import Flask, render_template, request
-import io
+from flask import Flask, render_template, request, g
 import pandas as pd
-app = Flask(__name__)
-
-
 import sqlite3
-from flask import g
 
+app = Flask(__name__)
 DATABASE = './db/database.db'
 
 def get_db():
@@ -29,16 +25,24 @@ def query_db(query, args=(), one=False):
 	return (rv[0] if rv else None) if one else rv
 
 
+FORMATOS_DE_EXCEL = ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf']
+
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
 
 	if request.method == 'POST':
 		if request.files:
 			archivo = request.files['archivo']
-			stream = io.StringIO(archivo.stream.read().decode("UTF8"), newline=None)
+			ext = archivo.filename.rsplit(".", 1)[1]
 			db = get_db()
 			header = 0 if 'con-nombre-de-columnas' in request.form else None
-			df = pd.read_csv(stream, header = header)
+
+			if ext.lower() == 'csv':
+				df = pd.read_csv(request.files.get('archivo'), header = header)
+
+			if ext.lower() in FORMATOS_DE_EXCEL:
+				df = pd.read_excel(request.files.get('archivo'))
+
 			df.to_sql(request.form['nombre'], db, if_exists='replace', index=False)
 
 	return render_template("subir-archivo.html")
