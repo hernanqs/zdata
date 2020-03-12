@@ -1,9 +1,13 @@
 from flask import Flask, render_template, request, g
 import pandas as pd
 import sqlite3
+import re
 
 app = Flask(__name__)
 DATABASE = './db/database.db'
+
+FORMATOS_DE_EXCEL = ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf']
+MENSAJE_NOMBRE_INVALIDO = 'Nombre de tabla o columna no válido.\nEl nombre solo puede contener letras del alfabeto español (incluyendo letras con tilde y Ñ) y guion bajo (_)'
 
 def get_db():
 	db = getattr(g, '_database', None)
@@ -25,12 +29,41 @@ def query_db(query, args=(), one=False):
 	return (rv[0] if rv else None) if one else rv
 
 
-FORMATOS_DE_EXCEL = ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf']
+def es_nombre_valido(nombre):
+	return re.compile(r'^[A-z0-9ÁÉÍÓÚÜÑáéíóúüñ_]+$').search(nombre) != None
+
+def comprobar_validez_de_nombre(nombre):
+	if not es_nombre_valido(nombre):
+		raise Exception(MENSAJE_NOMBRE_INVALIDO)
+
+
+def obtener_media(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	media = query_db(f"SELECT avg({nombre_de_columna}) AS media FROM {nombre_de_tabla};")[0]['media']
+	return media
+
+def obtener_rango(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	minimo = query_db(f"SELECT min({nombre_de_columna}) AS minimo FROM {nombre_de_tabla};")[0]['minimo']
+	maximo = query_db(f"SELECT max({nombre_de_columna}) AS maximo FROM {nombre_de_tabla};")[0]['maximo']
+	return (minimo, maximo)
+
+def obtener_conteo(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	conteo = query_db(f"SELECT count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla};")[0]['conteo']
+	return conteo
+
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
 
 	if request.method == 'POST':
+
+		comprobar_validez_de_nombre(request.form['nombre'])
+
 		if request.files:
 			archivo = request.files['archivo']
 			ext = archivo.filename.rsplit(".", 1)[1]
