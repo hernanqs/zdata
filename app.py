@@ -43,12 +43,17 @@ def obtener_media(nombre_de_tabla, nombre_de_columna):
 	media = query_db(f"SELECT avg({nombre_de_columna}) AS media FROM {nombre_de_tabla};")[0]['media']
 	return media
 
-def obtener_rango(nombre_de_tabla, nombre_de_columna):
+def obtener_minimo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
 	minimo = query_db(f"SELECT min({nombre_de_columna}) AS minimo FROM {nombre_de_tabla};")[0]['minimo']
+	return minimo
+
+def obtener_maximo(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
 	maximo = query_db(f"SELECT max({nombre_de_columna}) AS maximo FROM {nombre_de_tabla};")[0]['maximo']
-	return (minimo, maximo)
+	return maximo
 
 def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
