@@ -1,0 +1,15 @@
+<h2>Seleccionar nombre y tipo de datos para las columnas de la tabla "{{ nombre_de_tabla }}"</h2>
+<form action="modificar-columnas" method="POST">
+	{{ form.hidden_tag() }}
+	<input type="text" id="nombre_de_tabla" name="nombre_de_tabla" value="{{ nombre_de_tabla }}" required hidden>
+	{% for i in range(numero_de_columnas) %}
+		<fieldset>
+			<legend>Columna {{i+1}}</legend>
+			{{ form.columnas[i].nombre.label }}
+			{{ form.columnas[i].nombre }}
+			{{ form.columnas[i].tipo_de_datos.label }}
+			{{ form.columnas[i].tipo_de_datos }}
+		</fieldset>
+	{% endfor %}
+	<button type="submit">Enviar</button>
+</form>
