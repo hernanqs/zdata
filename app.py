@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, g
+from flask import Flask, render_template, request, g, jsonify
 import pandas as pd
 import sqlite3
 import re
+import os
 from flask_wtf import FlaskForm
 from wtforms import FieldList, StringField, SelectField, FormField, IntegerField
 
@@ -15,7 +16,11 @@ MENSAJE_NOMBRE_INVALIDO = 'Nombre de tabla o columna no válido.\nEl nombre solo
 def get_db():
 	db = getattr(g, '_database', None)
 	if db is None:
-		db = g._database = sqlite3.connect(DATABASE)
+		try:
+			db = g._database = sqlite3.connect(DATABASE)
+		except:
+			os.makedirs("./db", exist_ok=True)
+			db = g._database = sqlite3.connect(DATABASE)
 	db.row_factory = sqlite3.Row
 	return db
 
@@ -59,6 +64,11 @@ def obtener_tipos_de_datos_de_columnas(nombre_de_tabla):
 		nombres.append(columna['type'])
 	return nombres
 
+def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	filas = query_db(f"SELECT * FROM {nombre_de_tabla} LIMIT {int(limite)} OFFSET {int(offset)};")
+	filas = [tuple(fila) for fila in filas]
+	return filas
 
 class Columna(FlaskForm):
 	nombre = StringField('Nombre')
@@ -88,9 +98,9 @@ def obtener_maximo(nombre_de_tabla, nombre_de_columna):
 def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	conteo = query_db(f"SELECT count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla};")[0]['conteo']
-	return conteo
-
+	conteos = query_db(f"SELECT {nombre_de_columna} AS categoria, count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla} GROUP BY {nombre_de_columna};")
+	conteos = [{conteo['categoria']: conteo['conteo']} for conteo in conteos]
+	return conteos
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
@@ -157,6 +167,62 @@ def modificar_columnas():
 		get_db().commit()
 
 	return render_template("subir-archivo.html")
+
+
+@app.route('/api/tablas', methods=['GET'])
+def api_tablas():
+	nombres_de_tablas = obtener_nombres_de_tablas()
+	return jsonify(nombres_de_tablas)
+
+@app.route('/api/columnas/<tabla>', methods=['GET'])
+def api_columnas(tabla):
+	comprobar_validez_de_nombre(tabla)
+	nombres_de_columnas = obtener_nombres_de_columnas(tabla)
+	return jsonify(nombres_de_columnas)
+
+@app.route('/api/tipos-de-datos/<tabla>', methods=['GET'])
+def api_tipos_de_datos(tabla):
+	comprobar_validez_de_nombre(tabla)
+	nombres_de_columnas = obtener_nombres_de_columnas(tabla)
+	tipos_de_datos_de_columnas = obtener_tipos_de_datos_de_columnas(tabla)
+	tipos_de_datos_de_columnas = [{nombres_de_columnas[i]: tipos_de_datos_de_columnas[i]} for i in range(len(nombres_de_columnas))]
+	return jsonify(tipos_de_datos_de_columnas)
+
+@app.route('/api/filas/<tabla>', defaults={'limite':30, 'offset':0}, methods=['GET'])
+@app.route('/api/filas/<tabla>/<limite>', defaults={'offset':0}, methods=['GET'])
+@app.route('/api/filas/<tabla>/<limite>/<offset>', methods=['GET'])
+def api_filas(tabla, limite, offset):
+	comprobar_validez_de_nombre(tabla)
+	filas = obtener_filas_de_tabla(tabla, limite=limite, offset=offset)
+	return jsonify(filas)
+
+@app.route('/api/media/<tabla>/<columna>', methods=['GET'])
+def api_media(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	media = obtener_media(tabla, columna)
+	return jsonify(media)
+
+@app.route('/api/minimo/<tabla>/<columna>', methods=['GET'])
+def api_minimo(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	minimo = obtener_minimo(tabla, columna)
+	return jsonify(minimo)
+
+@app.route('/api/maximo/<tabla>/<columna>', methods=['GET'])
+def api_maximo(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	maximo = obtener_maximo(tabla, columna)
+	return jsonify(maximo)
+
+@app.route('/api/conteo/<tabla>/<columna>', methods=['GET'])
+def api_conteo(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	conteo = obtener_conteo(tabla, columna)
+	return jsonify(conteo)
 
 
 if __name__ == '__main__':
