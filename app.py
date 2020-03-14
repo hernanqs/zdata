@@ -12,7 +12,6 @@ DATABASE = './db/database.db'
 FORMATOS_DE_EXCEL = ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf']
 MENSAJE_NOMBRE_INVALIDO = 'Nombre de tabla o columna no válido.\nEl nombre solo puede contener letras del alfabeto español (incluyendo letras con tilde y Ñ) y guion bajo (_)'
 
-
 def get_db():
 	db = getattr(g, '_database', None)
 	if db is None:
@@ -68,11 +67,38 @@ class Columna(FlaskForm):
 class Columnas(FlaskForm):
 	columnas = FieldList(FormField(Columna), min_entries=1)
 
+def obtener_media(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	media = query_db(f"SELECT avg({nombre_de_columna}) AS media FROM {nombre_de_tabla};")[0]['media']
+	return media
+
+def obtener_minimo(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	minimo = query_db(f"SELECT min({nombre_de_columna}) AS minimo FROM {nombre_de_tabla};")[0]['minimo']
+	return minimo
+
+def obtener_maximo(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	maximo = query_db(f"SELECT max({nombre_de_columna}) AS maximo FROM {nombre_de_tabla};")[0]['maximo']
+	return maximo
+
+def obtener_conteo(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	conteo = query_db(f"SELECT count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla};")[0]['conteo']
+	return conteo
+
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
 
 	if request.method == 'POST':
+
+		comprobar_validez_de_nombre(request.form['nombre'])
+
 		if request.files:
 			archivo = request.files['archivo']
 			ext = archivo.filename.rsplit(".", 1)[1]
