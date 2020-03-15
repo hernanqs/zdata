@@ -1,0 +1,52 @@
+<table>
+	<tr>
+		<caption>{{ nombre_de_tabla }}</caption>
+		<thead>
+			{% for nombre_de_columna in nombres_de_columnas %}
+				<th>
+					{{ nombre_de_columna }}
+				</th>
+			{% endfor %}
+		</thead>
+		<tbody id="cuerpo-de-tabla">
+		</tbody>
+	</tr>
+</table>
+
+<div id="links-a-resto-de-la-tabla">
+	{% for grupo_de_filas in grupos_de_filas %}
+		<span> <a href="/mostrar-tabla/{{ nombre_de_tabla }}/{{ grupo_de_filas['tamano_de_grupo'] }}/{{ grupo_de_filas['offset_actual'] }}">{{ grupo_de_filas['numero_de_grupo'] }}</a> </span>
+	{% endfor %}
+</div>
+
+<script>
+	let cuerpoDeTabla = document.getElementById('cuerpo-de-tabla');
+	let url = '/api/filas/{{ nombre_de_tabla }}/{{ limite }}/{{ offset }}';
+
+	let request = new XMLHttpRequest();
+	request.open('GET', url);
+	request.responseType = 'json';
+
+	request.onload = function() {
+		let filas = request.response;
+		cuerpoDeTabla.innerHTML = '';
+		for (let fila of filas) {
+			celdas = '';
+			for (let celda of fila) {
+				celdas += `<td>${celda}</td>`;
+			}
+			cuerpoDeTabla.innerHTML += `<tr>${ celdas }</tr>`;
+		}
+	};
+
+	request.send();
+
+	let spansDeLinksARestoDeLaTabla = document.querySelectorAll('#links-a-resto-de-la-tabla span');
+	for (let spanDeLink of spansDeLinksARestoDeLaTabla) {
+		let link = spanDeLink.getElementsByTagName('a')[0];
+		if (link.attributes.href.textContent == window.location.pathname) {
+			spanDeLink.innerHTML = link.textContent
+		}
+	}
+
+</script>

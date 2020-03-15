@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, g, jsonify
+from flask import Flask, render_template, request, g, jsonify, redirect, url_for
 import pandas as pd
 import sqlite3
 import re
@@ -64,6 +64,11 @@ def obtener_tipos_de_datos_de_columnas(nombre_de_tabla):
 		nombres.append(columna['type'])
 	return nombres
 
+def obtener_cantidad_de_filas_de_tabla(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	cantidad_de_filas = query_db(f"SELECT count(*) AS cantidad_de_filas FROM {nombre_de_tabla};")[0]['cantidad_de_filas']
+	return cantidad_de_filas
+
 def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	filas = query_db(f"SELECT * FROM {nombre_de_tabla} LIMIT {int(limite)} OFFSET {int(offset)};")
@@ -107,7 +112,8 @@ def subir_archivo():
 
 	if request.method == 'POST':
 
-		comprobar_validez_de_nombre(request.form['nombre'])
+		nombre_de_tabla = request.form['nombre']
+		comprobar_validez_de_nombre(nombre_de_tabla)
 
 		if request.files:
 			archivo = request.files['archivo']
@@ -121,10 +127,11 @@ def subir_archivo():
 			if ext.lower() in FORMATOS_DE_EXCEL:
 				df = pd.read_excel(request.files.get('archivo'))
 
-			df.to_sql(request.form['nombre'], db, if_exists='replace', index=False)
+			df.to_sql(nombre_de_tabla, db, if_exists='replace', index=False)
+
+			return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
 
 	return render_template("subir-archivo.html")
-
 
 @app.route('/modificar-columnas', methods=["GET", "POST"])
 def modificar_columnas():
@@ -166,7 +173,38 @@ def modificar_columnas():
 		get_db().execute(f'ALTER TABLE _nueva_{ nombre_de_tabla } RENAME TO { nombre_de_tabla };')
 		get_db().commit()
 
-	return render_template("subir-archivo.html")
+	return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
+
+
+@app.route('/mostrar-tabla/<tabla>', defaults={'limite':30, 'offset':0}, methods=["GET"])
+@app.route('/mostrar-tabla/<tabla>/<limite>', defaults={'offset':0}, methods=['GET'])
+@app.route('/mostrar-tabla/<tabla>/<limite>/<offset>', methods=['GET'])
+def mostrar_tabla(tabla, limite, offset):
+	comprobar_validez_de_nombre(tabla)
+	nombres_de_columnas	= obtener_nombres_de_columnas(tabla)
+
+	cantidad_de_filas = obtener_cantidad_de_filas_de_tabla(tabla)
+	grupos_de_filas = []
+	offset_actual = 0
+	tamano_de_grupo = int(limite)
+	numero_de_grupo = 1
+	while offset_actual < cantidad_de_filas:
+		grupos_de_filas.append({
+			'numero_de_grupo': numero_de_grupo,
+			'tamano_de_grupo': tamano_de_grupo,
+			'offset_actual': offset_actual,
+			})
+		numero_de_grupo += 1
+		offset_actual += tamano_de_grupo
+
+	return render_template(
+		"mostrar-tabla.html",
+		nombre_de_tabla=tabla,
+		nombres_de_columnas=nombres_de_columnas,
+		limite=limite,
+		offset=offset,
+		grupos_de_filas=grupos_de_filas,
+	)
 
 
 @app.route('/api/tablas', methods=['GET'])
@@ -187,6 +225,12 @@ def api_tipos_de_datos(tabla):
 	tipos_de_datos_de_columnas = obtener_tipos_de_datos_de_columnas(tabla)
 	tipos_de_datos_de_columnas = [{nombres_de_columnas[i]: tipos_de_datos_de_columnas[i]} for i in range(len(nombres_de_columnas))]
 	return jsonify(tipos_de_datos_de_columnas)
+
+@app.route('/api/cantidad-de-filas/<tabla>', methods=['GET'])
+def api_cantidad_de_filas(tabla):
+	comprobar_validez_de_nombre(tabla)
+	cantidad_de_filas = obtener_cantidad_de_filas_de_tabla(tabla)
+	return jsonify(cantidad_de_filas)
 
 @app.route('/api/filas/<tabla>', defaults={'limite':30, 'offset':0}, methods=['GET'])
 @app.route('/api/filas/<tabla>/<limite>', defaults={'offset':0}, methods=['GET'])
