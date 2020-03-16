@@ -77,7 +77,12 @@ def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 
 class Columna(FlaskForm):
 	nombre = StringField('Nombre')
-	tipo_de_datos = SelectField('Tipo de datos', choices=[('INTEGER', 'Numéricos (enteros)'),('REAL', 'Numéricos (decimales)'),('TEXT', 'Categóricos')])
+	tipo_de_datos = SelectField('Tipo de datos', choices=[
+		('INTEGER', 'Numéricos (enteros)'),
+		('REAL', 'Numéricos (decimales)'),
+		('TEXT', 'Categóricos'),
+		('TIMESTAMP', 'Fechas')
+	])
 
 class Columnas(FlaskForm):
 	columnas = FieldList(FormField(Columna), min_entries=1)
@@ -125,7 +130,13 @@ def subir_archivo():
 				df = pd.read_csv(request.files.get('archivo'), header = header)
 
 			if ext.lower() in FORMATOS_DE_EXCEL:
-				df = pd.read_excel(request.files.get('archivo'))
+				df = pd.read_excel(request.files.get('archivo'), header = header)
+
+			df = df.apply(lambda col: pd.to_datetime(col, errors='ignore', dayfirst=True)
+				if col.dtypes == object
+				else col,
+				axis=0
+			)
 
 			df.to_sql(nombre_de_tabla, db, if_exists='replace', index=False)
 
