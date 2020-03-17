@@ -86,6 +86,16 @@ def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 	filas = [tuple(fila) for fila in filas]
 	return filas
 
+def obtener_tabla_como_dataframe(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	df = pd.read_sql(f'SELECT * FROM "{nombre_de_tabla}"', con=get_db())
+	df = df.apply(
+		lambda col: pd.to_datetime(col, errors='ignore', dayfirst=True)
+		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, col.name) == 'TIMESTAMP'
+		else col,
+	)
+	return df
+
 def obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
