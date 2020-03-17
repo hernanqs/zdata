@@ -54,14 +54,14 @@ def obtener_nombres_de_tablas():
 def obtener_nombres_de_columnas(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	nombres = []
-	for columna in query_db(f"PRAGMA table_info({ nombre_de_tabla });"):
+	for columna in query_db(f'PRAGMA table_info("{ nombre_de_tabla }");'):
 		nombres.append(columna['name'])
 	return nombres
 
 def obtener_tipos_de_datos_de_columnas(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	nombres = []
-	for columna in query_db(f"PRAGMA table_info({ nombre_de_tabla });"):
+	for columna in query_db(f'PRAGMA table_info("{ nombre_de_tabla }");'):
 		nombres.append(columna['type'])
 	return nombres
 
@@ -77,19 +77,19 @@ def obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna):
 
 def obtener_cantidad_de_filas_de_tabla(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
-	cantidad_de_filas = query_db(f"SELECT count(*) AS cantidad_de_filas FROM {nombre_de_tabla};")[0]['cantidad_de_filas']
+	cantidad_de_filas = query_db(f'SELECT count(*) AS cantidad_de_filas FROM "{nombre_de_tabla}";')[0]['cantidad_de_filas']
 	return cantidad_de_filas
 
 def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 	comprobar_validez_de_nombre(nombre_de_tabla)
-	filas = query_db(f"SELECT * FROM {nombre_de_tabla} LIMIT {int(limite)} OFFSET {int(offset)};")
+	filas = query_db(f'SELECT * FROM "{nombre_de_tabla}" LIMIT {int(limite)} OFFSET {int(offset)};')
 	filas = [tuple(fila) for fila in filas]
 	return filas
 
 def obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	df = pd.read_sql(f"SELECT {nombre_de_columna} FROM {nombre_de_tabla}", con=get_db())
+	df = pd.read_sql(f'SELECT "{nombre_de_columna}" FROM "{nombre_de_tabla}"', con=get_db())
 	df = df.apply(lambda col: pd.to_datetime(col, errors='ignore', dayfirst=True)
 		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna) == 'TIMESTAMP'
 		else col,
@@ -112,25 +112,25 @@ class Columnas(FlaskForm):
 def obtener_media(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	media = query_db(f"SELECT avg({nombre_de_columna}) AS media FROM {nombre_de_tabla};")[0]['media']
+	media = query_db(f'SELECT avg("{nombre_de_columna}") AS media FROM "{nombre_de_tabla}";')[0]['media']
 	return media
 
 def obtener_minimo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	minimo = query_db(f"SELECT min({nombre_de_columna}) AS minimo FROM {nombre_de_tabla};")[0]['minimo']
+	minimo = query_db(f'SELECT min("{nombre_de_columna}") AS minimo FROM "{nombre_de_tabla}";')[0]['minimo']
 	return minimo
 
 def obtener_maximo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	maximo = query_db(f"SELECT max({nombre_de_columna}) AS maximo FROM {nombre_de_tabla};")[0]['maximo']
+	maximo = query_db(f'SELECT max("{nombre_de_columna}") AS maximo FROM "{nombre_de_tabla}";')[0]['maximo']
 	return maximo
 
 def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
-	conteos = query_db(f"SELECT {nombre_de_columna} AS categoria, count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla} GROUP BY {nombre_de_columna};")
+	conteos = query_db(f'SELECT "{nombre_de_columna}" AS categoria, count("{nombre_de_columna}") AS conteo FROM "{nombre_de_tabla}" GROUP BY "{nombre_de_columna}";')
 	conteos = {conteo['categoria']: conteo['conteo'] for conteo in conteos}
 	return conteos
 
@@ -230,14 +230,14 @@ def modificar_columnas():
 		comprobar_validez_de_nombre(nombre_de_tabla)
 		nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
 
-		get_db().execute(f'''CREATE TABLE _nueva_{ nombre_de_tabla }(
-			{', '.join(
-				[request.form[f'columnas-{i}-nombre'] + ' ' + request.form[f'columnas-{i}-tipo_de_datos'] for i in range(len(nombres_de_columnas))]
-			)}
-		);''')
-		get_db().execute(f'INSERT INTO _nueva_{ nombre_de_tabla } SELECT * FROM { nombre_de_tabla };')
-		get_db().execute(f'DROP TABLE { nombre_de_tabla };')
-		get_db().execute(f'ALTER TABLE _nueva_{ nombre_de_tabla } RENAME TO { nombre_de_tabla };')
+		get_db().execute(f'''CREATE TABLE "_nueva_{ nombre_de_tabla }"("{
+			', "'.join(
+				[request.form[f'columnas-{i}-nombre'] + '" ' + request.form[f'columnas-{i}-tipo_de_datos'] for i in range(len(nombres_de_columnas))]
+			)
+		});''')
+		get_db().execute(f'INSERT INTO "_nueva_{ nombre_de_tabla }" SELECT * FROM "{ nombre_de_tabla }";')
+		get_db().execute(f'DROP TABLE "{ nombre_de_tabla }";')
+		get_db().execute(f'ALTER TABLE "_nueva_{ nombre_de_tabla }" RENAME TO "{ nombre_de_tabla }";')
 		get_db().commit()
 
 	return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
@@ -293,7 +293,7 @@ def api_tipos_de_datos(tabla):
 	tipos_de_datos_de_columnas = [{nombres_de_columnas[i]: tipos_de_datos_de_columnas[i]} for i in range(len(nombres_de_columnas))]
 	return jsonify(tipos_de_datos_de_columnas)
 
-@app.route('/api/tipo_de_datos/<tabla>/<columna>', methods=['GET'])
+@app.route('/api/tipo-de-datos/<tabla>/<columna>', methods=['GET'])
 def api_tipo_de_datos_1_columna(tabla, columna):
 	comprobar_validez_de_nombre(tabla)
 	comprobar_validez_de_nombre(columna)
