@@ -11,7 +11,8 @@ app.secret_key = 'TEST'
 DATABASE = './db/database.db'
 
 FORMATOS_DE_EXCEL = ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf']
-MENSAJE_NOMBRE_INVALIDO = 'Nombre de tabla o columna no válido.\nEl nombre solo puede contener letras del alfabeto español (incluyendo letras con tilde y Ñ) y guion bajo (_)'
+MENSAJE_NOMBRE_INVALIDO = 'Nombre de tabla o columna no válido.\nEl nombre solo puede contener letras del alfabeto español (incluyendo letras con tilde y Ñ) y guion bajo (_).'
+MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS = 'No se pudo realizar la operación, posiblemente porque la columna contenía valores no numéricos.'
 
 def get_db():
 	db = getattr(g, '_database', None)
@@ -64,6 +65,16 @@ def obtener_tipos_de_datos_de_columnas(nombre_de_tabla):
 		nombres.append(columna['type'])
 	return nombres
 
+def obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	nombres = obtener_nombres_de_columnas(nombre_de_tabla)
+	tipos_de_datos = obtener_tipos_de_datos_de_columnas(nombre_de_tabla)
+	for i in range(len(nombres)):
+		if nombres[i] == nombre_de_columna:
+			return tipos_de_datos[i]
+	raise Exception('No se encontró la columna especificada en la tabla especificada.')
+
 def obtener_cantidad_de_filas_de_tabla(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	cantidad_de_filas = query_db(f"SELECT count(*) AS cantidad_de_filas FROM {nombre_de_tabla};")[0]['cantidad_de_filas']
@@ -74,6 +85,17 @@ def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 	filas = query_db(f"SELECT * FROM {nombre_de_tabla} LIMIT {int(limite)} OFFSET {int(offset)};")
 	filas = [tuple(fila) for fila in filas]
 	return filas
+
+def obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	df = pd.read_sql(f"SELECT {nombre_de_columna} FROM {nombre_de_tabla}", con=get_db())
+	df = df.apply(lambda col: pd.to_datetime(col, errors='ignore', dayfirst=True)
+		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna) == 'TIMESTAMP'
+		else col,
+	)
+	columna = df[nombre_de_columna]
+	return columna
 
 class Columna(FlaskForm):
 	nombre = StringField('Nombre')
@@ -109,8 +131,42 @@ def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
 	conteos = query_db(f"SELECT {nombre_de_columna} AS categoria, count({nombre_de_columna}) AS conteo FROM {nombre_de_tabla} GROUP BY {nombre_de_columna};")
-	conteos = [{conteo['categoria']: conteo['conteo']} for conteo in conteos]
+	conteos = {conteo['categoria']: conteo['conteo'] for conteo in conteos}
 	return conteos
+
+def obtener_mediana(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	try:
+		mediana = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna).median()
+		return mediana
+	except:
+		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
+
+def obtener_quintiles(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	columna = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna)
+	try:
+		quintiles = columna.quantile([.20, .40, .60, .80])
+		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna) == 'TIMESTAMP':
+			quintiles = quintiles.dt.strftime('%Y-%m-%d %H:%M:%S')
+		return quintiles.to_dict()
+	except:
+		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
+
+def obtener_cuartiles(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	columna = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna)
+	try:
+		cuartiles = columna.quantile([.25, .50, .75])
+		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna) == 'TIMESTAMP':
+			cuartiles = cuartiles.dt.strftime('%Y-%m-%d %H:%M:%S')
+		return cuartiles.to_dict()
+	except:
+		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
+
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
@@ -127,10 +183,10 @@ def subir_archivo():
 			header = 0 if 'con-nombre-de-columnas' in request.form else None
 
 			if ext.lower() == 'csv':
-				df = pd.read_csv(request.files.get('archivo'), header = header)
+				df = pd.read_csv(request.files.get('archivo'), header = header, prefix='col_')
 
 			if ext.lower() in FORMATOS_DE_EXCEL:
-				df = pd.read_excel(request.files.get('archivo'), header = header)
+				df = pd.read_excel(request.files.get('archivo'), header = header, prefix='col_')
 
 			df = df.apply(lambda col: pd.to_datetime(col, errors='ignore', dayfirst=True)
 				if col.dtypes == object
@@ -138,7 +194,7 @@ def subir_archivo():
 				axis=0
 			)
 
-			df.to_sql(nombre_de_tabla, db, if_exists='replace', index=False)
+			df.to_sql(nombre_de_tabla, db, if_exists='replace', index=True, index_label='idx')
 
 			return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
 
@@ -237,6 +293,13 @@ def api_tipos_de_datos(tabla):
 	tipos_de_datos_de_columnas = [{nombres_de_columnas[i]: tipos_de_datos_de_columnas[i]} for i in range(len(nombres_de_columnas))]
 	return jsonify(tipos_de_datos_de_columnas)
 
+@app.route('/api/tipo_de_datos/<tabla>/<columna>', methods=['GET'])
+def api_tipo_de_datos_1_columna(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	tipo_de_datos = obtener_tipo_de_datos_de_columna(tabla, columna)
+	return jsonify(tipo_de_datos)
+
 @app.route('/api/cantidad-de-filas/<tabla>', methods=['GET'])
 def api_cantidad_de_filas(tabla):
 	comprobar_validez_de_nombre(tabla)
@@ -279,6 +342,26 @@ def api_conteo(tabla, columna):
 	conteo = obtener_conteo(tabla, columna)
 	return jsonify(conteo)
 
+@app.route('/api/mediana/<tabla>/<columna>', methods=['GET'])
+def api_mediana(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	mediana = obtener_mediana(tabla, columna)
+	return jsonify(mediana)
+
+@app.route('/api/quintiles/<tabla>/<columna>', methods=['GET'])
+def api_quintiles(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	quintiles = obtener_quintiles(tabla, columna)
+	return jsonify(quintiles)
+
+@app.route('/api/cuartiles/<tabla>/<columna>', methods=['GET'])
+def api_cuartiles(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	cuartiles = obtener_cuartiles(tabla, columna)
+	return jsonify(cuartiles)
 
 if __name__ == '__main__':
 	app.run(debug=True)
