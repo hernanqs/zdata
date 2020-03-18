@@ -210,45 +210,43 @@ def subir_archivo():
 
 	return render_template("subir-archivo.html")
 
-@app.route('/modificar-columnas', methods=["GET", "POST"])
-def modificar_columnas():
+@app.route('/modificar-columnas/<tabla>', methods=["GET"])
+def modificar_columnas_GET(tabla):
+	nombre_de_tabla = tabla
+	comprobar_validez_de_nombre(nombre_de_tabla)
 
-	if request.method == 'GET':
-		nombre_de_tabla = request.args.get('tabla')
-		comprobar_validez_de_nombre(nombre_de_tabla)
+	nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
+	tipos_de_datos_de_columnas=obtener_tipos_de_datos_de_columnas(nombre_de_tabla)
+	numero_de_columnas=len(nombres_de_columnas)
 
-		nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
-		tipos_de_datos_de_columnas=obtener_tipos_de_datos_de_columnas(nombre_de_tabla)
-		numero_de_columnas=len(nombres_de_columnas)
+	cols = [{'nombre': nombres_de_columnas[i]} for i in range(numero_de_columnas)]
 
-		cols = [{'nombre': nombres_de_columnas[i]} for i in range(numero_de_columnas)]
+	form = Columnas(columnas=cols)
+	for i in range(len(cols)):
+		form.columnas[i]['tipo_de_datos'].data = tipos_de_datos_de_columnas[i]
 
-		form = Columnas(columnas=cols)
-		for i in range(len(cols)):
-			form.columnas[i]['tipo_de_datos'].data = tipos_de_datos_de_columnas[i]
+	return render_template(
+		"modificar-columnas.html",
+		form=form,
+		numero_de_columnas=len(nombres_de_columnas),
+		nombre_de_tabla=nombre_de_tabla
+	)
 
-		return render_template(
-			"modificar-columnas.html",
-			form=form,
-			numero_de_columnas=len(nombres_de_columnas),
-			nombre_de_tabla=nombre_de_tabla
+@app.route('/modificar-columnas/modificar-columnas', methods=["POST"])
+def modificar_columnas_POST():
+	nombre_de_tabla = request.form['nombre_de_tabla']
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
+
+	get_db().execute(f'''CREATE TABLE "_nueva_{ nombre_de_tabla }"("{
+		', "'.join(
+			[request.form[f'columnas-{i}-nombre'] + '" ' + request.form[f'columnas-{i}-tipo_de_datos'] for i in range(len(nombres_de_columnas))]
 		)
-
-
-	if request.method == 'POST':
-		nombre_de_tabla = request.form['nombre_de_tabla']
-		comprobar_validez_de_nombre(nombre_de_tabla)
-		nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
-
-		get_db().execute(f'''CREATE TABLE "_nueva_{ nombre_de_tabla }"("{
-			', "'.join(
-				[request.form[f'columnas-{i}-nombre'] + '" ' + request.form[f'columnas-{i}-tipo_de_datos'] for i in range(len(nombres_de_columnas))]
-			)
-		});''')
-		get_db().execute(f'INSERT INTO "_nueva_{ nombre_de_tabla }" SELECT * FROM "{ nombre_de_tabla }";')
-		get_db().execute(f'DROP TABLE "{ nombre_de_tabla }";')
-		get_db().execute(f'ALTER TABLE "_nueva_{ nombre_de_tabla }" RENAME TO "{ nombre_de_tabla }";')
-		get_db().commit()
+	});''')
+	get_db().execute(f'INSERT INTO "_nueva_{ nombre_de_tabla }" SELECT * FROM "{ nombre_de_tabla }";')
+	get_db().execute(f'DROP TABLE "{ nombre_de_tabla }";')
+	get_db().execute(f'ALTER TABLE "_nueva_{ nombre_de_tabla }" RENAME TO "{ nombre_de_tabla }";')
+	get_db().commit()
 
 	return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
 
