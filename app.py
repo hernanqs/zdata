@@ -298,7 +298,7 @@ def api_tipos_de_datos(tabla):
 	comprobar_validez_de_nombre(tabla)
 	nombres_de_columnas = obtener_nombres_de_columnas(tabla)
 	tipos_de_datos_de_columnas = obtener_tipos_de_datos_de_columnas(tabla)
-	tipos_de_datos_de_columnas = [{nombres_de_columnas[i]: tipos_de_datos_de_columnas[i]} for i in range(len(nombres_de_columnas))]
+	tipos_de_datos_de_columnas = [[nombres_de_columnas[i], tipos_de_datos_de_columnas[i]] for i in range(len(nombres_de_columnas))]
 	return jsonify(tipos_de_datos_de_columnas)
 
 @app.route('/api/tipo-de-datos/<tabla>/<columna>', methods=['GET'])
