@@ -3,6 +3,8 @@ import pandas as pd
 import sqlite3
 import re
 import os
+import json
+from scipy.stats import pearsonr
 from flask_wtf import FlaskForm
 from wtforms import FieldList, StringField, SelectField, FormField, IntegerField
 
@@ -39,7 +41,7 @@ def query_db(query, args=(), one=False):
 
 
 def es_nombre_valido(nombre):
-	return re.compile(r'^[A-z0-9ÁÉÍÓÚÜÑáéíóúüñ_]+$').search(nombre) != None
+	return re.compile(r'^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ_]+$').search(nombre) != None
 
 def comprobar_validez_de_nombre(nombre):
 	if not es_nombre_valido(nombre):
@@ -50,6 +52,11 @@ def obtener_nombres_de_tablas():
 	for tabla in query_db("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"):
 		nombres.append(tabla['name'])
 	return nombres
+
+def eliminar_tabla(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	get_db().execute(f'DROP TABLE "{ nombre_de_tabla }";')
+	get_db().commit()
 
 def obtener_nombres_de_columnas(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
@@ -125,6 +132,16 @@ def obtener_media(nombre_de_tabla, nombre_de_columna):
 	media = query_db(f'SELECT avg("{nombre_de_columna}") AS media FROM "{nombre_de_tabla}";')[0]['media']
 	return media
 
+def obtener_desviacion_estandar(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	columna = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna)
+	try:
+		desviacion_estandar = columna.std()
+		return desviacion_estandar
+	except:
+		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
+
 def obtener_minimo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
@@ -176,6 +193,27 @@ def obtener_cuartiles(nombre_de_tabla, nombre_de_columna):
 		return cuartiles.to_dict()
 	except:
 		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
+
+def obtener_correlaciones_de_tabla(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	tabla = obtener_tabla_como_dataframe(nombre_de_tabla)
+	tabla = tabla.loc[:, tabla.columns != 'idx']
+	return tabla.corr(method=lambda x, y: pearsonr(x, y)[0])
+
+def obtener_valores_p_de_correlaciones_de_tabla(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	tabla = obtener_tabla_como_dataframe(nombre_de_tabla)
+	tabla = tabla.loc[:, tabla.columns != 'idx']
+	return tabla.corr(method=lambda x, y: pearsonr(x, y)[1])
+
+def obtener_correlacion_de_columnas(nombre_de_tabla, nombre_de_columna1, nombre_de_columna2):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna1)
+	comprobar_validez_de_nombre(nombre_de_columna2)
+	columna1 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna1)
+	columna2 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna2)
+	r, valor_p = columna1.corr(columna2, method=pearsonr)
+	return {'r': r, 'valor p': valor_p}
 
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
@@ -238,6 +276,9 @@ def modificar_columnas_POST():
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	nombres_de_columnas=obtener_nombres_de_columnas(nombre_de_tabla)
 
+	for i in range(len(nombres_de_columnas)):
+		comprobar_validez_de_nombre(request.form[f'columnas-{i}-nombre'])
+
 	get_db().execute(f'''CREATE TABLE "_nueva_{ nombre_de_tabla }"("{
 		', "'.join(
 			[request.form[f'columnas-{i}-nombre'] + '" ' + request.form[f'columnas-{i}-tipo_de_datos'] for i in range(len(nombres_de_columnas))]
@@ -287,6 +328,12 @@ def api_tablas():
 	nombres_de_tablas = obtener_nombres_de_tablas()
 	return jsonify(nombres_de_tablas)
 
+@app.route('/api/eliminar-tabla/<tabla>', methods=['GET'])
+def api_eliminar_tabla(tabla):
+	comprobar_validez_de_nombre(tabla)
+	eliminar_tabla(tabla)
+	return redirect(url_for('api_tablas'))	
+
 @app.route('/api/columnas/<tabla>', methods=['GET'])
 def api_columnas(tabla):
 	comprobar_validez_de_nombre(tabla)
@@ -329,6 +376,13 @@ def api_media(tabla, columna):
 	media = obtener_media(tabla, columna)
 	return jsonify(media)
 
+@app.route('/api/desviacion-estandar/<tabla>/<columna>', methods=['GET'])
+def api_desviacion_estandar(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	desviacion_estandar = obtener_desviacion_estandar(tabla, columna)
+	return jsonify(desviacion_estandar)
+
 @app.route('/api/minimo/<tabla>/<columna>', methods=['GET'])
 def api_minimo(tabla, columna):
 	comprobar_validez_de_nombre(tabla)
@@ -370,6 +424,28 @@ def api_cuartiles(tabla, columna):
 	comprobar_validez_de_nombre(columna)
 	cuartiles = obtener_cuartiles(tabla, columna)
 	return jsonify(cuartiles)
+
+@app.route('/api/correlaciones-de-tabla/<tabla>', methods=['GET'])
+def api_tabla_de_correlaciones(tabla):
+	comprobar_validez_de_nombre(tabla)
+	correlaciones = obtener_correlaciones_de_tabla(tabla)
+	corr_json = correlaciones.to_json()
+	return jsonify(json.loads(corr_json))
+
+@app.route('/api/valores-p-de-correlaciones-de-tabla/<tabla>', methods=['GET'])
+def api_valores_p_tabla_de_correlaciones(tabla):
+	comprobar_validez_de_nombre(tabla)
+	valores_p = obtener_valores_p_de_correlaciones_de_tabla(tabla)
+	valores_p_json = valores_p.to_json()
+	return jsonify(json.loads(valores_p_json))
+
+@app.route('/api/correlacion/<tabla>/<columna1>/<columna2>', methods=['GET'])
+def api_correlacion(tabla, columna1, columna2):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna1)
+	comprobar_validez_de_nombre(columna2)
+	correlacion = obtener_correlacion_de_columnas(tabla, columna1, columna2)
+	return jsonify(correlacion)
 
 if __name__ == '__main__':
 	app.run(debug=True)
