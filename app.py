@@ -161,12 +161,26 @@ def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	conteos = {conteo['categoria']: conteo['conteo'] for conteo in conteos}
 	return conteos
 
+def obtener_moda(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	conteo = obtener_conteo(nombre_de_tabla, nombre_de_columna)
+	una_moda = max(conteo, key=conteo.get)
+	todas_las_modas = []
+	for nivel in conteo:
+		if conteo[nivel] == conteo[una_moda]:
+			todas_las_modas.append(nivel)
+	return todas_las_modas
+
 def obtener_mediana(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	comprobar_validez_de_nombre(nombre_de_columna)
+	columna = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna)
 	try:
-		mediana = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna).median()
-		return mediana
+		mediana = columna.quantile([.50])
+		if obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna) == 'TIMESTAMP':
+			mediana = mediana.dt.strftime('%Y-%m-%d %H:%M:%S')
+		return mediana.to_dict()[0.5]
 	except:
 		raise Exception(MENSAJE_OPERACION_FALLIDA_VALORES_NO_NUMERICOS)
 
@@ -206,15 +220,105 @@ def obtener_valores_p_de_correlaciones_de_tabla(nombre_de_tabla):
 	tabla = tabla.loc[:, tabla.columns != 'idx']
 	return tabla.corr(method=lambda x, y: pearsonr(x, y)[1])
 
-def obtener_correlacion_de_columnas(nombre_de_tabla, nombre_de_columna1, nombre_de_columna2):
+def obtener_correlacion_de_columnas(nombre_de_tabla, nombre_de_columna_1, nombre_de_columna_2):
 	comprobar_validez_de_nombre(nombre_de_tabla)
-	comprobar_validez_de_nombre(nombre_de_columna1)
-	comprobar_validez_de_nombre(nombre_de_columna2)
-	columna1 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna1)
-	columna2 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna2)
-	r, valor_p = columna1.corr(columna2, method=pearsonr)
-	return {'r': r, 'valor p': valor_p}
+	comprobar_validez_de_nombre(nombre_de_columna_1)
+	comprobar_validez_de_nombre(nombre_de_columna_2)
+	columna_1 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna_1)
+	columna_2 = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna_2)
+	r, valor_p = columna_1.corr(columna_2, method=pearsonr)
+	return {'r': r, 'valor_p': valor_p}
 
+def obtener_resumen_de_columna(nombre_de_tabla, nombre_de_columna):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna)
+	tipo_de_datos = obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna)
+	columna = obtener_columna_de_tabla_como_series(nombre_de_tabla, nombre_de_columna)
+
+	if tipo_de_datos == 'INTEGER' or tipo_de_datos == 'REAL':
+		media = obtener_media(nombre_de_tabla, nombre_de_columna)
+		desviacion_estandar = columna.std()
+		minimo = obtener_minimo(nombre_de_tabla, nombre_de_columna)
+		maximo = obtener_maximo(nombre_de_tabla, nombre_de_columna)
+		mediana = columna.quantile([.50])
+		mediana = mediana.to_dict()[0.5]
+		quintiles = columna.quantile([.20, .40, .60, .80])
+		quintiles = quintiles.to_dict()
+		cuartiles = columna.quantile([.25, .50, .75])
+		cuartiles = cuartiles.to_dict()
+		return {
+			'media': media,
+			'desviacion_estandar': desviacion_estandar,
+			'minimo': minimo,
+			'maximo': maximo,
+			'mediana': mediana,
+			'quintiles': quintiles,
+			'cuartiles': cuartiles,
+		}
+
+	if tipo_de_datos == 'TIMESTAMP':
+		minimo = obtener_minimo(nombre_de_tabla, nombre_de_columna)
+		maximo = obtener_maximo(nombre_de_tabla, nombre_de_columna)
+		mediana = columna.quantile([.50])
+		mediana = mediana.dt.strftime('%Y-%m-%d %H:%M:%S')
+		mediana = mediana.to_dict()[0.5]
+		quintiles = columna.quantile([.20, .40, .60, .80])
+		quintiles = quintiles.dt.strftime('%Y-%m-%d %H:%M:%S')
+		quintiles = quintiles.to_dict()
+		cuartiles = columna.quantile([.25, .50, .75])
+		cuartiles = cuartiles.dt.strftime('%Y-%m-%d %H:%M:%S')
+		cuartiles = cuartiles.to_dict()
+		return {
+			'minimo': minimo,
+			'maximo': maximo,
+			'mediana': mediana,
+			'quintiles': quintiles,
+			'cuartiles': cuartiles,
+		}
+
+	if tipo_de_datos == 'TEXT':
+		conteos = obtener_conteo(nombre_de_tabla, nombre_de_columna)
+		moda = obtener_moda(nombre_de_tabla, nombre_de_columna)
+		return {
+			'conteo': conteos,
+			'moda': moda,
+		}
+
+def obtener_resumen_de_2_columnas(nombre_de_tabla, nombre_de_columna_1, nombre_de_columna_2):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	comprobar_validez_de_nombre(nombre_de_columna_1)
+	comprobar_validez_de_nombre(nombre_de_columna_2)
+	resumen = {}
+	resumen['columnas'] = {
+		nombre_de_columna_1: obtener_resumen_de_columna(nombre_de_tabla, nombre_de_columna_1),
+		nombre_de_columna_2: obtener_resumen_de_columna(nombre_de_tabla, nombre_de_columna_2),	
+	}
+	tipo_de_datos_de_columna_1 = obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna_1)
+	columna_1_es_numerica = tipo_de_datos_de_columna_1 == 'INTEGER' or tipo_de_datos_de_columna_1 == 'REAL'
+	tipo_de_datos_de_columna_2 = obtener_tipo_de_datos_de_columna(nombre_de_tabla, nombre_de_columna_2)
+	columna_2_es_numerica = tipo_de_datos_de_columna_2 == 'INTEGER' or tipo_de_datos_de_columna_2 == 'REAL'
+	if columna_1_es_numerica and columna_2_es_numerica:
+		resumen['correlacion'] = obtener_correlacion_de_columnas(nombre_de_tabla, nombre_de_columna_1, nombre_de_columna_2)
+
+	return resumen
+
+def obtener_resumen_de_tabla(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	resumen = {}
+	resumen['columnas'] = {}
+	for nombre_de_columna in obtener_nombres_de_columnas(nombre_de_tabla):
+		resumen['columnas'][nombre_de_columna] = obtener_resumen_de_columna(nombre_de_tabla, nombre_de_columna)
+	resumen['correlaciones'] = {}
+	correlaciones = obtener_correlaciones_de_tabla(nombre_de_tabla)
+	corr_json = correlaciones.to_json()
+	resumen['correlaciones']['r'] = json.loads(corr_json)
+	valores_p = obtener_valores_p_de_correlaciones_de_tabla(nombre_de_tabla)
+	valores_p_json = valores_p.to_json()
+	resumen['correlaciones']['valores_p'] = json.loads(valores_p_json)
+	return resumen
+
+
+# Rutas
 
 @app.route('/subir-archivo', methods=["GET", "POST"])
 def subir_archivo():
@@ -404,6 +508,13 @@ def api_conteo(tabla, columna):
 	conteo = obtener_conteo(tabla, columna)
 	return jsonify(conteo)
 
+@app.route('/api/moda/<tabla>/<columna>', methods=['GET'])
+def api_moda(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	moda = obtener_moda(tabla, columna)
+	return jsonify(moda)
+
 @app.route('/api/mediana/<tabla>/<columna>', methods=['GET'])
 def api_mediana(tabla, columna):
 	comprobar_validez_de_nombre(tabla)
@@ -446,6 +557,27 @@ def api_correlacion(tabla, columna1, columna2):
 	comprobar_validez_de_nombre(columna2)
 	correlacion = obtener_correlacion_de_columnas(tabla, columna1, columna2)
 	return jsonify(correlacion)
+
+@app.route('/api/resumen-de-columna/<tabla>/<columna>', methods=['GET'])
+def api_resumen_columna(tabla, columna):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna)
+	resumen = obtener_resumen_de_columna(tabla, columna)
+	return jsonify(resumen)
+
+@app.route('/api/resumen-de-2-columnas/<tabla>/<columna1>/<columna2>', methods=['GET'])
+def api_resumen_2_columnas(tabla, columna1, columna2):
+	comprobar_validez_de_nombre(tabla)
+	comprobar_validez_de_nombre(columna1)
+	comprobar_validez_de_nombre(columna2)
+	resumen = obtener_resumen_de_2_columnas(tabla, columna1, columna2)
+	return jsonify(resumen)
+
+@app.route('/api/resumen-de-tabla/<tabla>', methods=['GET'])
+def api_resumen_tabla(tabla):
+	comprobar_validez_de_nombre(tabla)
+	resumen = obtener_resumen_de_tabla(tabla)
+	return jsonify(resumen)
 
 if __name__ == '__main__':
 	app.run(debug=True)
