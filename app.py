@@ -346,6 +346,12 @@ def subir_archivo():
 				axis=0
 			)
 
+			caracteres_no_validos = re.compile(r'[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ_]')
+			nombres_de_columnas_validos = {
+				viejo_nombre: re.sub(caracteres_no_validos, '', viejo_nombre.replace(' ', '_')) for viejo_nombre in df.columns
+				}
+			df.rename(nombres_de_columnas_validos, axis=1, inplace=True)
+
 			df.to_sql(nombre_de_tabla, db, if_exists='replace', index=True, index_label='idx')
 
 			return redirect(url_for('mostrar_tabla', tabla=nombre_de_tabla))
