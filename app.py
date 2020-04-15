@@ -93,6 +93,21 @@ def obtener_filas_de_tabla(nombre_de_tabla, limite=30, offset=0):
 	filas = [tuple(fila) for fila in filas]
 	return filas
 
+def obtener_valores_nulos_por_columna(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	df = pd.read_sql(f'SELECT * FROM "{nombre_de_tabla}"', con=get_db())
+	return df.isna().sum().to_dict()
+
+def obtener_indices_de_filas_con_valores_nulos(nombre_de_tabla):
+	comprobar_validez_de_nombre(nombre_de_tabla)
+	df = pd.read_sql(f'SELECT * FROM "{nombre_de_tabla}"', con=get_db())
+	valores_nulos_por_fila = df.isna().sum(axis=1).to_dict()
+	indices_de_filas_con_valores_nulos = []
+	for fila, cantidad_de_valores_nulos in valores_nulos_por_fila.items():
+		if cantidad_de_valores_nulos > 0:
+			indices_de_filas_con_valores_nulos.append(fila)
+	return indices_de_filas_con_valores_nulos
+
 def obtener_tabla_como_dataframe(nombre_de_tabla):
 	comprobar_validez_de_nombre(nombre_de_tabla)
 	df = pd.read_sql(f'SELECT * FROM "{nombre_de_tabla}"', con=get_db())
@@ -159,6 +174,10 @@ def obtener_conteo(nombre_de_tabla, nombre_de_columna):
 	comprobar_validez_de_nombre(nombre_de_columna)
 	conteos = query_db(f'SELECT "{nombre_de_columna}" AS categoria, count("{nombre_de_columna}") AS conteo FROM "{nombre_de_tabla}" GROUP BY "{nombre_de_columna}";')
 	conteos = {conteo['categoria']: conteo['conteo'] for conteo in conteos}
+	try:
+		del conteos[None]
+	except KeyError:
+		pass
 	return conteos
 
 def obtener_moda(nombre_de_tabla, nombre_de_columna):
@@ -478,6 +497,18 @@ def api_filas(tabla, limite, offset):
 	comprobar_validez_de_nombre(tabla)
 	filas = obtener_filas_de_tabla(tabla, limite=limite, offset=offset)
 	return jsonify(filas)
+
+@app.route('/api/valores-nulos-por-columna/<tabla>', methods=['GET'])
+def api_valores_nulos_por_columna(tabla):
+	comprobar_validez_de_nombre(tabla)
+	valores_nulos_por_columna = obtener_valores_nulos_por_columna(tabla)
+	return jsonify(valores_nulos_por_columna)
+
+@app.route('/api/indices-de-filas-con-valores-nulos/<tabla>', methods=['GET'])
+def api_indices_de_filas_con_valores_nulos(tabla):
+	comprobar_validez_de_nombre(tabla)
+	indices_de_filas_con_valores_nulos = obtener_indices_de_filas_con_valores_nulos(tabla)
+	return jsonify(indices_de_filas_con_valores_nulos)
 
 @app.route('/api/media/<tabla>/<columna>', methods=['GET'])
 def api_media(tabla, columna):
